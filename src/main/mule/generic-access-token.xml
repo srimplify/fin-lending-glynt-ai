@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	
+	
+	<os:object-store name="tkn_Object_store" doc:name="Object store" doc:id="d86aae13-11a0-49ff-8a44-2f8fff353f2d" persistent="false" />
+	<flow name="refresh-Token-every-59min" doc:id="7c6aa291-52a7-4e07-93cc-ba16a35b48b0">
+		<scheduler doc:name="Scheduler" doc:id="56cc214d-b9c0-47d0-8272-5cf2f3376871">
+			<scheduling-strategy>
+				<fixed-frequency frequency="59" timeUnit="MINUTES" />
+			</scheduling-strategy>
+		</scheduler>
+		<flow-ref doc:name="request-Provider-Token" doc:id="ce51e02b-4ea6-424d-b370-a1994d0ed680" name="request-Token-from-Provider" />
+	</flow>
+	
+	<flow name="get-Token-from-os" doc:id="8d3e9ff8-03c9-4ca3-9cae-e1da6a2d848e">
+		<os:retrieve doc:name="Retrieve Token from OS" doc:id="55555e20-45b3-4ef4-8741-a212ff2adfca" objectStore="tkn_Object_store" key="osKeyForToken" target="var_tokenFromOS" />
+		<choice doc:name="Choice" doc:id="cd093b5e-6ec5-4822-bef7-b7f8cadf2584">
+			<when expression="#[vars.var_tokenFromOS == null]">
+				<flow-ref doc:name="Request new Token" doc:id="841b3cfb-739c-48d3-a13c-d529a621bef8" name="request-Token-from-Provider" />
+				<os:retrieve doc:name="Set token in var var_tokenFromOS for further use" doc:id="821b28cb-cec6-4e42-b9b8-96726e16f1a5" key="osKeyForToken" objectStore="tkn_Object_store" target="var_tokenFromOS" />
+			</when>
+		</choice>
+	</flow>
+
+	
+	<flow name="request-Token-from-Provider" doc:id="cc773732-bb01-4a23-b844-6d6876224770" >
+
+
+
+
+<!-- ## ONLY CHANGE THE FOLLOWING IN THIS FILE  -->
+	<!-- BEGIN: ## REPLACE HTTP REQUEST FOR FETCHING TOKEN -->
+		<http:request method="POST" doc:name="Glynt access token" doc:id="df3b0c61-85c4-4a51-8302-544e540a70a4" config-ref="glynt_HTTP_Request_config" path="v6/auth/get-token/">
+			<http:body>
+				<![CDATA[#[output application/json ---
+				{
+					"username": Mule::p('glynt.username'),
+					"password": Mule::p('glynt.password')
+				}]]]>
+			</http:body>
+			<http:headers><![CDATA[#[output application/java
+				---
+				{
+					"Content-Type" : "application/json"
+				}]]]></http:headers>
+		</http:request>
+	<!-- END: ## REPLACE HTTP REQUEST FOR FETCHING TOKEN -->
+		
+		
+		
+		<os:store doc:name="Store token" doc:id="02a4c7c5-21c1-46e4-a211-a2995d4a40be" key="osKeyForToken" objectStore="tkn_Object_store">
+			<os:value ><![CDATA[#["Bearer " ++ (payload["access_token"] as String default "")]]]></os:value>
+		</os:store>
+		<logger level="INFO" doc:name="Logger" doc:id="829ab0a7-bedc-494b-a963-8c3b94172fba" message='#["## Refreshing token ================---&gt;"]'/>
+	</flow>
+	
+	
+	
+	
+	
+	</mule>

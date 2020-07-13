@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<file:config name="File_Config" doc:name="File Config" doc:id="b2554dd6-22fe-4cdb-bde1-dca92b091cb8" >
+		<file:connection workingDir="/Users/user-name/downloads" />
+	</file:config>
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="b792481b-8a4f-472b-9f8b-da5fed60712a" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<flow name="glynt-submit-flow" doc:id="37947a65-52f7-4163-ba58-7c50282ee689" >
+		<flow-ref doc:name="Send doc" doc:id="e72de47b-4136-47f5-8146-09e9ab7356e9" name="send-doc-to-glynt" />
+		<flow-ref doc:name="Create extraction" doc:id="9153c054-b116-40c7-a961-0761ef1aa579" name="create-extraction" />
+		<flow-ref doc:name="Flow Reference" doc:id="fb0f632f-14de-49c7-9ef5-bb2e63f499c0" name="publish-for-extraction-retrieval" />
+	</flow>
+	<flow name="main" doc:id="eb1b32f1-bcd7-4494-97b1-5981f2d2b9e0">
+		<http:listener doc:name="Listener" doc:id="15b4feca-e2ad-4677-8c40-ae0d7a11ae25" path="/sfdc-glynt" config-ref="HTTP_Listener_config" />
+		<set-variable value="#[attributes.queryParams.tmodel default Mule::p('glynt.training_set')]" doc:name="Set training model" doc:id="27e7879b-a991-4951-8183-a596c34ad41a" variableName="trModel"/>
+		<flow-ref doc:name="Get access token" doc:id="705d67f3-6964-44fe-a231-1a532f9336a0" name="get-Token-from-os" />
+		<choice doc:name="Choice" doc:id="3c869211-4044-42e7-a001-90047c7eff03" >
+			<when expression='#[attributes.queryParams.fname == "results"]'>
+				<flow-ref doc:name="glynt-get-results" doc:id="923fbf4a-ee6b-4f1b-82d6-b8d7da6bbd0d" name="glynt-get-results"/>
+			</when>
+			<when expression='#[attributes.queryParams.fname == "fetch-sfdc"]'>
+				<flow-ref doc:name="get-sfdc-attachment" doc:id="958c004d-5f0d-4558-8d56-7fff797c6053" name="get-sfdc-attachment"/>
+			</when>
+			<otherwise >
+				<set-variable value="#[attributes.queryParams.fname]" doc:name="Store filename" doc:id="4ffb11f3-3d20-4478-b67f-d33b3aa1cf3a" variableName="fname" />
+				<file:read doc:name="Read" doc:id="cbcb908f-0cae-4134-a456-c0f0ee630bf6" config-ref="File_Config" path="#[vars.fname]" />
+				<flow-ref doc:name="Flow Reference" doc:id="83fe8dfe-f398-4c47-bd88-cf73c1f96322" name="glynt-submit-flow" />
+			</otherwise>
+		</choice>
+	</flow>
+	<flow name="send-doc-to-glynt" doc:id="46f9d3d7-f82c-4102-83e9-a7fb96c90903" >
+		<ee:transform doc:name="Base64 encode" doc:id="abfba822-1106-481d-932a-58130523099c">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+output text/plain
+---
+toBase64(payload as Binary)]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="POST" doc:name="Submit doc to glynt" doc:id="fab8ad1b-6ca4-4993-ba12-40d930d36304" config-ref="glynt_HTTP_Request_config" path="#[p('glynt.ver') ++ &quot;/data-pools/&quot; ++ p('glynt.datapool_ppp') ++ &quot;/documents&quot;]">
+			<http:body><![CDATA[#[output applicatin/json ---
+{
+	"label": vars.fname,
+	"tags": ["W9",vars.fname],
+	"content_type":     dw::core::Strings::substringAfter(vars.fname, ".") match {
+        case "tiff" -> "image/tiff"
+        case "pdf" -> "application/pdf"
+        else -> "plain/text"
+    },
+	"content": payload	
+}]]]></http:body>
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : vars.var_tokenFromOS,
+	"content-type" : "application/json"
+}]]]></http:headers>
+		</http:request>
+		<ee:transform doc:name="Transform Message" doc:id="c83fc9d5-9196-413f-81cf-5b19b7d98a4e">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"id": payload["id"] default "error"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	
+	
+	<flow name="create-extraction" doc:id="c83fc9d5-9196-413f-81cf-5b19b7d98e4a" >
+			<logger level="INFO" doc:name="Logger" doc:id="68d4bae1-ef95-43a5-98db-016e0bc74853" message='#[output application/json --- "Summitting doc for extraction: " ++ payload["id"] ++ "; " ++ vars.fname]'/>
+		<http:request method="POST" doc:name="Submit doc for extraction" doc:id="69fcbbf9-efe3-4a41-85c9-98117bed115b" config-ref="glynt_HTTP_Request_config" path="#[p('glynt.ver') ++ &quot;/data-pools/&quot; ++ p('glynt.datapool_ppp') ++ &quot;/extractions&quot;]">
+			<http:body><![CDATA[#[output applicatin/json ---
+{
+	"training_set": vars.trModel,
+	"document": payload["id"]
+}]]]></http:body>
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : vars.var_tokenFromOS,
+	"content-type" : "application/json"
+}]]]></http:headers>
+		</http:request>
+		<ee:transform doc:name="Transform Message" doc:id="435d7df2-138a-4af3-ad1a-edfebee4e55b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"id": payload["id"] default "error"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="publish-for-extraction-retrieval" doc:id="3f7ea2df-0db3-4555-9cea-e97bbbdecd13" >
+		<vm:publish queueName="glynt-q" doc:name="Publish" doc:id="212e4586-3c37-4e40-baa3-e82106ee1413" config-ref="VM_Config">
+			<vm:content ><![CDATA[#[output application/java ---
+{
+	id: payload["id"],
+	fname: vars.fname
+	}]]]></vm:content>
+		</vm:publish>
+	</flow>
+	<flow name="glynt-get-results" doc:id="24f84741-ba40-4c16-9aa0-a69b1d46b5c4" >
+		<ee:transform doc:name="Transform Message" doc:id="8599921a-8fad-4a22-babf-44eb9b6c420e">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="outarray"><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<os:retrieve-all-keys doc:name="Retrieve all keys" doc:id="dec51fbd-c3cd-41b2-9add-fe96c60362b4" objectStore="glynt_result_objectstore"/>
+		<foreach doc:name="For Each" doc:id="8b534c43-c82c-434f-8efb-7a8542fada26" >
+			<os:retrieve doc:name="Retrieve" doc:id="8205eda4-b78f-44e2-87b0-b8582f3ea75b" key="#[payload]" objectStore="glynt_result_objectstore" target="result"/>
+			<ee:transform doc:name="Transform Message" doc:id="9d69c75b-abb1-479e-a3dd-e1620796d8a5" >
+				<ee:message >
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="outarray" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.outarray + vars.result]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+		</foreach>
+		<ee:transform doc:name="Transform Message" doc:id="9202ddf8-155e-4567-870b-da27632b8711" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Number of results from Glynt": sizeOf(vars.outarray),
+	"Results": vars.outarray
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

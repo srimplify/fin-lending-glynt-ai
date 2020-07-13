@@ -1,0 +1,12 @@
+glynt:
+  username: 
+  password: 
+  host: 
+  ver: "v6"
+  datapool_ppp: 
+  training_set: 
+  
+sfdc:  
+  user: 
+  password: 
+  security_token: 

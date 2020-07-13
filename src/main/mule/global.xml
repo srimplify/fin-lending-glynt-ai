@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce" xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd">
+	<http:request-config name="glynt_HTTP_Request_config" doc:name="HTTP Request configuration" doc:id="5dba6b06-9b90-447f-af85-addee9515d8e" >
+		<http:request-connection protocol="HTTPS" host="${glynt.host}" />
+	</http:request-config>
+	<configuration-properties doc:name="Configuration properties" doc:id="8882a583-6b96-444e-95fb-f7627ab60c6f" file="config.yaml" />
+	<vm:config name="VM_Config" doc:name="VM Config" doc:id="11abb25a-adf1-471d-b567-1ce4137500fe">
+		<vm:queues >
+			<vm:queue queueName="glynt-q" />
+		</vm:queues>
+	</vm:config>
+	
+
+	
+	<os:object-store name="glynt_Object_store" doc:name="Object store" doc:id="8eff4c78-39d9-413c-a127-0e915aa414d5" persistent="false" />
+	<os:object-store name="glynt_result_objectstore" doc:name="Object store" doc:id="5a5a270b-4644-4691-bfdd-6102072666db" persistent="false" />
+	<salesforce:sfdc-config name="Salesforce_Config" doc:name="Salesforce Config" doc:id="a0b19ee2-a678-4d84-a02a-00bed1e528a3" >
+		<salesforce:basic-connection username="${sfdc.user}" password="${sfdc.password}" securityToken='${sfdc.security_token}' />	
+	</salesforce:sfdc-config>
+</mule>

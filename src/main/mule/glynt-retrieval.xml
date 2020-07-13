@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="glynt-ext-retrieval-listener" doc:id="a1e7f297-98d0-46ba-844b-5017a87629c4" >
+		<vm:listener queueName="glynt-q" doc:name="Listener" doc:id="4fc9ab6c-0236-4a4c-94c8-9ac3f9f2262c" config-ref="VM_Config"/>
+		<logger level="INFO" doc:name="Logger" doc:id="41f42554-ace0-45b3-863a-4b4a928d6be5" message='#["GLYNT.ai ==&gt; Adding to Extraction Retrieval list: " ++ payload["fname"] as String ++ "; " ++ payload["id"]]'/>
+		<os:store doc:name="Store" doc:id="e5821376-c6a7-4996-9ffd-4c0044530393" objectStore="glynt_Object_store" key='#[payload["id"] as String]'>
+			<os:value ><![CDATA[#[payload["fname"]]]]></os:value>
+		</os:store>
+	</flow>
+	<flow name="glynt-ext-retrieval-scheduler" doc:id="5d16465a-8124-4b29-9ebd-6dd1702a7332" >
+		<scheduler doc:name="Scheduler 30 sec" doc:id="e20377f7-2c5b-4116-90e0-6b9364aef277" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="30" startDelay="30" timeUnit="SECONDS"/>
+			</scheduling-strategy>
+		</scheduler>
+		<os:retrieve doc:name="Retrieve access token" doc:id="0a33961c-fd94-44e2-a3b6-ba623121d6d0" key="osKeyForToken" objectStore="tkn_Object_store" target="osKeyForToken"/>
+		<os:retrieve-all-keys doc:name="Retrieve all keys" doc:id="2c9638e2-99a1-4014-84ee-f47651376ec4" objectStore="glynt_Object_store"/>
+		<foreach doc:name="For Each" doc:id="4d0c850a-da25-431b-ac7f-2db4b9ebd405">
+			<logger level="INFO" doc:name="Logger" doc:id="6e433c04-295b-40e9-8cae-b0aeec5afdeb" message='#["Glynt.ai checking extraction status for: " ++ (payload as String)]'/>
+			<os:retrieve doc:name="Retrieve" doc:id="3c7eae02-169a-4f9e-a85b-f9282c354093" key="#[payload as String]" objectStore="glynt_Object_store" target="fname"/>
+			<http:request method="GET" doc:name="Get extraction result" doc:id="751dd98e-7fbf-41ca-9ed2-58fb1dd3d91e" config-ref="glynt_HTTP_Request_config" path="#[p('glynt.ver') ++ &quot;/data-pools/&quot; ++ p('glynt.datapool_ppp') ++ &quot;/extractions/&quot; ++ (payload as String)]" target="extResult">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : vars.osKeyForToken
+}]]]></http:headers>
+			</http:request>
+			<choice doc:name="Choice" doc:id="44a83a66-928e-4076-b7e8-2aeb81ac2bb9" >
+				<when expression='#[vars.extResult["finished"] == true and vars.extResult["status"] == "Success"]'>
+					<logger level="INFO" doc:name="Logger" doc:id="bbdb8f82-672c-4c7c-8466-215945ca2dea" message='#["GLYNT.ai ==&gt; Extraction finished successfully for : " ++ payload]'/>
+					<ee:transform doc:name="Transform Message" doc:id="7db58938-da1d-406f-b063-45018eebaa5e" >
+						<ee:message >
+						</ee:message>
+						<ee:variables >
+							<ee:set-variable variableName="var_extResult" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+file_name: vars.fname,
+fieldnames: vars.extResult["results"] pluck $$,
+fieldvalues: vars.extResult["results"] pluck $["content"],
+fullResult: vars.extResult
+
+/* 
+name: vars.extResult["results"].Name_str["content"],    
+business_name: vars.extResult["results"].BusinessName_str["content"],   
+address_1: vars.extResult["results"].AddressL1_str["content"],
+address_2: vars.extResult["results"].AddressL2_str["content"],
+employer_id: vars.extResult["results"].EmployerIdenticificationNumber_num["content"]
+*/
+}]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+					<os:remove doc:name="Remove" doc:id="d3072603-3b78-4345-a87c-8385258d37b1" objectStore="glynt_Object_store" key="#[payload as String]" />
+					<logger level="INFO" doc:name="Logger" doc:id="d604b498-2e95-4c62-888d-9e06b9bdab7a" message="#[output application/json --- vars.var_extResult]"/>
+					<os:store doc:name="Store" doc:id="1cedb31c-0f14-4ad7-8e64-364ff60b870d" key="#[vars.fname]" objectStore="glynt_result_objectstore">
+						<os:value ><![CDATA[#[output application/json --- vars.var_extResult]]]></os:value>
+					</os:store>
+				</when>
+				<when expression='#[vars.extResult["finished"] == true and vars.extResult["status"] != "Success"]'>
+					<logger level="INFO" doc:name="Logger" doc:id="99e6ea13-bf53-4f36-b2c2-cee90283c1e3" message='#["GLYNT.ai ==&gt; Extraction finished but not successful: " ++ " status: " ++ vars.extResult["status"]]'/>
+				</when>
+				<otherwise >
+					<logger level="INFO" doc:name="Logger" doc:id="ebbd240f-650c-4b27-a0bb-b8cfc4687eef" message='#["GLYNT.ai ==&gt; Extraction NOT finished for : " ++ payload as String]'/>
+				</otherwise>
+			</choice>
+		</foreach>
+	</flow>
+</mule>
